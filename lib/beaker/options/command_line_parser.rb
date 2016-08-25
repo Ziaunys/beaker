@@ -209,6 +209,12 @@ module Beaker
             @cmd_options[:collect_perf_data] = mode || 'normal'
           end
 
+          ops.on '--[no-]save-perf-data',
+                 'Save the collected perf data to the Beaker log dir',
+                 '(default: false)' do |bool|
+            @cmd_options[:save_perf_data] = bool
+          end
+
           opts.on('--version', 'Report currently running version of beaker' ) do
             @cmd_options[:beaker_version_print] = true
           end
