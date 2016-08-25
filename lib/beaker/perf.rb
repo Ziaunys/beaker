@@ -21,6 +21,7 @@ module Beaker
       @logger = options[:logger]
       @perf_timestamp = Time.now
       @hosts.map { |h| setup_perf_on_host(h) }
+      @perf_data = {}
     end
 
     # Install sysstat if required and perform any modifications needed to make sysstat work.
@@ -63,65 +64,81 @@ module Beaker
     # @return [void]
     def print_perf_info()
       @perf_end_timestamp = Time.now
-      @hosts.map { |h| get_perf_data(h, @perf_timestamp, @perf_end_timestamp) }
-    end
+      @perf_data = get_perf_data(@hosts, @perf_timestamp, @perf_end_timestamp)
+      @logger.perf_data(@perf_data.pp)
 
-    # If host is a supported (ie linux) platform, generate a performance report
-    # @param [Host] host The host we are working with
-    # @param [Time] perf_start The beginning time for the SAR report
-    # @param [Time] perf_end   The ending time for the SAR report
-    # @return [void]  The report is sent to the logging output
-    def get_perf_data(host, perf_start, perf_end)
-      @logger.perf_output("Getting perf data for host: " + host)
-      if host['platform'] =~ PERF_SUPPORTED_PLATFORMS # All flavours of Linux
-        if not @options[:collect_perf_data] =~ /aggressive/
-          host.exec(Command.new("sar -A -s #{perf_start.strftime("%H:%M:%S")} -e #{perf_end.strftime("%H:%M:%S")}"),:acceptable_exit_codes => [0,1,2])
-        end
-        if (defined? @options[:graphite_server] and not @options[:graphite_server].nil?) and
-           (defined? @options[:graphite_perf_data] and not @options[:graphite_perf_data].nil?)
-          export_perf_data_to_graphite(host)
-        end
-      else
-        @logger.perf_output("Perf (sysstat) not supported on host: " + host)
+      if (defined? @options[:graphite_server] and not @options[:graphite_server].nil?) and
+         (defined? @options[:graphite_perf_data] and not @options[:graphite_perf_data].nil?)
+        export_perf_data_to_graphite(@host, @perf_data)
+      end
+      if defined? @options[:save_perf_data]
+        save_perf_data(perf_data: @perf_data)
       end
     end
 
-    # Send performance report numbers to an external Graphite instance
-    # @param [Host] host The host we are working with
+    # If host is a supported (ie linux) platform, generate a performance report
+    # @param [Hosts] hosts The hosts we are working with
+    # @param [Time] perf_start The beginning time for the SAR report
+    # @param [Time] perf_end   The ending time for the SAR report
     # @return [void]  The report is sent to the logging output
-    def export_perf_data_to_graphite(host)
+    def get_perf_data(hosts, perf_start, perf_end)
+      perf_data = {}
+      hosts.each do |host|
+        @logger.perf_output("Getting perf data for host: " + host)
+        if host['platform'] =~ PERF_SUPPORTED_PLATFORMS # All flavours of Linux
+          if not @options[:collect_perf_data] =~ /aggressive/
+            host.exec(Command.new("sar -A -s #{perf_start.strftime("%H:%M:%S")} -e #{perf_end.strftime("%H:%M:%S")}"),:acceptable_exit_codes => [0,1,2])
+          end
+          perf_data[host] = JSON.parse(host.exec(Command.new("sadf -j -- -A"),:silent => true).stdout)
+        else
+          @logger.perf_output("Perf (sysstat) not supported on host: " + host)
+        end
+      end
+      return perf_data
+    end
+
+    def save_perf_data(perf_file = File.join(@options[:log_dated_dir], 'perf_data.json'), perf_data = {})
+      File.open(perf_file, 'a') do |f|
+        f.write(perf_data.to_json)
+      end
+    end
+    # Send performance report numbers to an external Graphite instance
+    # @param [Hosts] hosts The host we are working with
+    # @return [void]  The report is sent to the logging output
+    def export_perf_data_to_graphite(hosts, perf_data)
       @logger.perf_output("Sending data to Graphite server: " + @options[:graphite_server])
 
-      data = JSON.parse(host.exec(Command.new("sadf -j -- -A"),:silent => true).stdout)
-      hostname = host['vmhostname'].split('.')[0]
+      hosts.each do |host|
+        hostname = host['vmhostname'].split('.')[0]
+        perf_data[host]['sysstat']['hosts'].each do |host|
+          host['statistics'].each do |poll|
+            timestamp = DateTime.parse(poll['timestamp']['date'] + ' ' + poll['timestamp']['time']).to_time.to_i
 
-      data['sysstat']['hosts'].each do |host|
-        host['statistics'].each do |poll|
-          timestamp = DateTime.parse(poll['timestamp']['date'] + ' ' + poll['timestamp']['time']).to_time.to_i
+            poll.keys.each do |stat|
+              case stat
+                when 'cpu-load-all'
+                  poll[stat].each do |s|
+                    s.keys.each do |k|
+                      next if k == 'cpu'
 
-          poll.keys.each do |stat|
-            case stat
-              when 'cpu-load-all'
-                poll[stat].each do |s|
-                  s.keys.each do |k|
-                    next if k == 'cpu'
+                      socket = TCPSocket.new(@options[:graphite_server], 2003)
+                      socket.puts "#{@options[:graphite_perf_data]}.#{hostname}.cpu.#{s['cpu']}.#{k} #{s[k]} #{timestamp}"
+                      socket.close
+                    end
+                  end
 
+                when 'memory'
+                  poll[stat].keys.each do |s|
                     socket = TCPSocket.new(@options[:graphite_server], 2003)
-                    socket.puts "#{@options[:graphite_perf_data]}.#{hostname}.cpu.#{s['cpu']}.#{k} #{s[k]} #{timestamp}"
+                    socket.puts "#{@options[:graphite_perf_data]}.#{hostname}.memory.#{s} #{poll[stat][s]} #{timestamp}"
                     socket.close
                   end
-                end
-
-              when 'memory'
-                poll[stat].keys.each do |s|
-                  socket = TCPSocket.new(@options[:graphite_server], 2003)
-                  socket.puts "#{@options[:graphite_perf_data]}.#{hostname}.memory.#{s} #{poll[stat][s]} #{timestamp}"
-                  socket.close
-                end
+              end
             end
           end
-        end
       end
     end
   end
 end
+end
+
