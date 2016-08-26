@@ -65,7 +65,7 @@ module Beaker
     def print_perf_info()
       @perf_end_timestamp = Time.now
       @perf_data = get_perf_data(@hosts, @perf_timestamp, @perf_end_timestamp)
-      @logger.perf_data(@perf_data.pp)
+      @logger.perf_data(@perf_data.to_s)
 
       if (defined? @options[:graphite_server] and not @options[:graphite_server].nil?) and
          (defined? @options[:graphite_perf_data] and not @options[:graphite_perf_data].nil?)
@@ -82,15 +82,14 @@ module Beaker
     # @param [Time] perf_end   The ending time for the SAR report
     # @return [void]  The report is sent to the logging output
     def get_perf_data(hosts, perf_start, perf_end)
-      perf_data = {}
+      perf_data = Hash.new()
       hosts.each do |host|
         @logger.perf_output("Getting perf data for host: " + host)
         if host['platform'] =~ PERF_SUPPORTED_PLATFORMS # All flavours of Linux
           if not @options[:collect_perf_data] =~ /aggressive/
             host.exec(Command.new("sar -A -s #{perf_start.strftime("%H:%M:%S")} -e #{perf_end.strftime("%H:%M:%S")}"),:acceptable_exit_codes => [0,1,2])
           end
-          perf_data = JSON.parse(host.exec(Command.new("sadf -j -- -A"),:silent => true).stdout)
-          @logger.perf_output("Perf data test: " + perf_data)
+          perf_data[host] = JSON.parse(host.exec(Command.new("sadf -j -- -A"),:silent => true).stdout)
         else
           @logger.perf_output("Perf (sysstat) not supported on host: " + host)
         end
