@@ -89,6 +89,7 @@ module Beaker
           if not @options[:collect_perf_data] =~ /aggressive/
             host.exec(Command.new("sar -A -s #{perf_start.strftime("%H:%M:%S")} -e #{perf_end.strftime("%H:%M:%S")}"),:acceptable_exit_codes => [0,1,2])
           end
+          @logger.perf_output("In supported")
           perf_data[host] = JSON.parse(host.exec(Command.new("sadf -j -- -A"),:silent => true).stdout)
           @logger.perf_output("Perf data test: " + perf_data[host] )
         else
