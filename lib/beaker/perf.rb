@@ -21,7 +21,7 @@ module Beaker
       @logger = options[:logger]
       @perf_timestamp = Time.now
       @hosts.map { |h| setup_perf_on_host(h) }
-      @perf_data = {}
+      @perf_data = Hash.new()
     end
 
     # Install sysstat if required and perform any modifications needed to make sysstat work.
@@ -65,14 +65,12 @@ module Beaker
     def print_perf_info()
       @perf_end_timestamp = Time.now
       @perf_data = get_perf_data(@hosts, @perf_timestamp, @perf_end_timestamp)
-      @logger.perf_data(@perf_data.to_s)
-
       if (defined? @options[:graphite_server] and not @options[:graphite_server].nil?) and
          (defined? @options[:graphite_perf_data] and not @options[:graphite_perf_data].nil?)
         export_perf_data_to_graphite(@host, @perf_data)
       end
       if defined? @options[:save_perf_data]
-        save_perf_data(perf_data: @perf_data)
+        save_perf_data(@perf_data)
       end
     end
 
@@ -89,7 +87,7 @@ module Beaker
           if not @options[:collect_perf_data] =~ /aggressive/
             host.exec(Command.new("sar -A -s #{perf_start.strftime("%H:%M:%S")} -e #{perf_end.strftime("%H:%M:%S")}"),:acceptable_exit_codes => [0,1,2])
           end
-          perf_data[host] = JSON.parse(host.exec(Command.new("sadf -j -- -A"),:silent => true).stdout)
+          perf_data[host['vmhostname']] = JSON.parse(host.exec(Command.new("sadf -j -- -A"),:silent => true).stdout)
         else
           @logger.perf_output("Perf (sysstat) not supported on host: " + host)
         end
@@ -97,10 +95,11 @@ module Beaker
       return perf_data
     end
 
-    def save_perf_data(perf_file = File.join(@options[:log_dated_dir], 'perf_data.json'), perf_data = {})
-      File.open(perf_file, 'a') do |f|
+    def save_perf_data(perf_data, perf_file = File.join(@options[:log_dated_dir], 'perf_data.json'))
+      File.open(perf_file, 'w') do |f|
         f.write(perf_data.to_json)
       end
+      @logger.perf_output("Saved perf data to " + perf_file)
     end
     # Send performance report numbers to an external Graphite instance
     # @param [Hosts] hosts The host we are working with
