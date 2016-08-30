@@ -60,7 +60,7 @@ module Beaker
       end
     end
 
-    # Iterate over all hosts, calling get_perf_data
+    # Gathers the perf data and reports the output
     # @return [void]
     def print_perf_info()
       @perf_end_timestamp = Time.now
@@ -70,7 +70,7 @@ module Beaker
         export_perf_data_to_graphite(@hosts, @perf_data)
       end
       if defined? @options[:save_perf_data]
-        save_perf_data(@perf_data)
+        save_perf_data(@perf_data, File.join(@options[:log_dated_dir], 'perf_data.json'))
       end
     end
 
@@ -98,7 +98,7 @@ module Beaker
     # Saves the performance report to disk in the JSON format
     # @param [Hash] perf_data The unprocessed performance data
     # @param [String] perf_file This is the target path to save the performance data as a JSON file
-    def save_perf_data(perf_data, perf_file = File.join(@options[:log_dated_dir], 'perf_data.json'))
+    def save_perf_data(perf_data, perf_file)
       File.open(perf_file, 'w') do |f|
         f.write(perf_data.to_json)
       end
@@ -144,4 +144,3 @@ module Beaker
   end
 end
 end
-

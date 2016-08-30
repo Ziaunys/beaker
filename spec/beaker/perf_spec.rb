@@ -23,6 +23,7 @@ module Beaker
         @my_logger = Beaker::Logger.new(@options)
         @my_logger.add_destination(@my_io)
         @options[:logger] = @my_logger
+        @options[:log_dated_dir] = 'test_perf_data_dir'
       end
 
       it 'creates a new Perf object with a single host, :collect_perf_data = true' do
@@ -85,6 +86,5 @@ module Beaker
         expect(@my_io.string).to match(/Setup perf on host: myHost\nPerf \(sysstat\) not supported on host: myHost\nSetup perf on host: myOtherHost\nPerf \(sysstat\) not supported on host: myOtherHost\nGetting perf data for host: myHost\nPerf \(sysstat\) not supported on host: myHost\nGetting perf data for host: myOtherHost\nPerf \(sysstat\) not supported on host: myOtherHost/)
       end
     end
-
   end
 end
