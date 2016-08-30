@@ -67,7 +67,7 @@ module Beaker
       @perf_data = get_perf_data(@hosts, @perf_timestamp, @perf_end_timestamp)
       if (defined? @options[:graphite_server] and not @options[:graphite_server].nil?) and
          (defined? @options[:graphite_perf_data] and not @options[:graphite_perf_data].nil?)
-        export_perf_data_to_graphite(@host, @perf_data)
+        export_perf_data_to_graphite(@hosts, @perf_data)
       end
       if defined? @options[:save_perf_data]
         save_perf_data(@perf_data)
@@ -95,6 +95,9 @@ module Beaker
       return perf_data
     end
 
+    # Saves the performance report to disk in the JSON format
+    # @param [Hash] perf_data The unprocessed performance data
+    # @param [String] perf_file This is the target path to save the performance data as a JSON file
     def save_perf_data(perf_data, perf_file = File.join(@options[:log_dated_dir], 'perf_data.json'))
       File.open(perf_file, 'w') do |f|
         f.write(perf_data.to_json)
@@ -103,13 +106,14 @@ module Beaker
     end
     # Send performance report numbers to an external Graphite instance
     # @param [Hosts] hosts The host we are working with
+    # @param [Hash] perf_data The unprocessed performance data
     # @return [void]  The report is sent to the logging output
     def export_perf_data_to_graphite(hosts, perf_data)
       @logger.perf_output("Sending data to Graphite server: " + @options[:graphite_server])
 
       hosts.each do |host|
         hostname = host['vmhostname'].split('.')[0]
-        perf_data[host]['sysstat']['hosts'].each do |host|
+        perf_data[host['vmhostname']]['sysstat']['hosts'].each do |host|
           host['statistics'].each do |poll|
             timestamp = DateTime.parse(poll['timestamp']['date'] + ' ' + poll['timestamp']['time']).to_time.to_i
 
